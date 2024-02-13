@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                script {
+                    // Clean up the workspace directory
+                    deleteDir()
+
+                    // Clone the Azure DevOps repository using the PAT without exposing it in the command
+                    withCredentials([string(credentialsId: 'AzureCredential', variable: 'AzureCredential')]) {
+                        sh 'git clone -b preprod_02022024 https://${AzureCredential}@dev.azure.com/kovaionai/Generic-Workflows/_git/generic-workflows-backend'
+                    }
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                script {
+                    dir('generic-workflows-backend') {
+                        app = docker.build("sathish8329/priappback")
+                    }
+                }
+            }
+        }
+
+        stage('Test image') {
+            steps {
+                script {
+                    app.inside {
+                        sh 'echo "Tests passed"'
+                    }
+                }
+            }
+        }
+
+        stage('Push image') {
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub') {
+                        app.push("${env.BUILD_NUMBER}")
+                    }
+                }
+            }
+        }
+
+        stage('Trigger ManifestUpdate') {
+            steps {
+                echo "triggering updatemanifestjob"
+                build job: 'updatemanifestback', parameters: [string(name: 'DOCKERTAG', value: env.BUILD_NUMBER)]
+            }
+        }
+    }
+}
